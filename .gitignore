@@ -1,0 +1,17 @@
+# Local credentials and machine-specific settings
+.env
+.env.*
+!.env.example
+local.properties
+
+# Node and test artifacts
+node_modules/
+reports/api-validation-*.json
+
+# Android/Gradle build output
+.gradle/
+build/
+**/build/
+.idea/
+*.iml
+

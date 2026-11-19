@@ -1,0 +1,9 @@
+{
+  "name": "achacha-api-validation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:api": "node scripts/test-bus-apis.mjs"
+  }
+}
+

@@ -93,19 +93,23 @@ MONITORING --(권한 회수/OS 중지)--> DEGRADED (상태 안내·정리)
 ### P0. 개발 환경과 API 검증 (최우선)
 - [ ] Git 상태 및 폴더 파일 확인; `gradlew`, `settings.gradle.kts` 존재 여부 확인.
 - [ ] Android Studio/SDK 36, JDK 설치 및 버전 확인.
-- [ ] 서울 정류장·노선 실 조회, 두 차량 필드·HTTPS 지원·인증 방식 확인.
-- [ ] 경기 정류장·노선 실 조회, 두 차량 필드·인증 방식 확인.
+- [x] 서울 정류장·노선 실 조회, 두 차량 필드·HTTPS 지원·인증 방식 확인 (`docs/API-VALIDATION.md`).
+- [x] 경기 정류장·노선 실 조회, 두 차량 필드·인증 방식 확인 (`docs/API-VALIDATION.md`).
 - [ ] 호출 한도, 과금/키 제한, 검색 엔드포인트 문서 기록.
 - [ ] Android 16 예약→서비스 시작의 **작은 스파이크 테스트** 작성/실행.
 
 **완료 게이트 G0:** `docs/API-INTEGRATION.md` 검증 표에 확인 사실을 기입하고, 시작/감시 기술 위험을 명시.
 
 ### P1. 앱 초기화 및 도메인 계층
-- [ ] Compose 프로젝트, 라우팅, Material 3 테마, 권한 화면.
+- [ ] 실제 앱 개발을 시작할 때 현재 루트에 Android 프로젝트를 초기화한다. 중첩 프로젝트 폴더는 만들지 않는다.
+- [ ] 아직 없는 루트 Gradle 설정(`settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`), Gradle Wrapper(`gradlew`, `gradlew.bat`, `gradle/wrapper/*`)와 버전 카탈로그를 생성한다.
+- [ ] 아직 없는 앱 설정(`app/build.gradle.kts`, `proguard-rules.pro`), `AndroidManifest.xml`, `AchachaApplication.kt`, `MainActivity.kt` 및 기본 리소스를 생성한다.
+- [ ] Kotlin + Compose + Material 3 기본 화면, 라우팅, 테마와 권한 안내 화면을 구성하고 최초 `assembleDebug`를 통과시킨다.
 - [ ] 공통 모델과 `BusRepository` 인터페이스 정의.
-- [ ] `FakeBusDataSource` fixture 및 모의 모드 명확히 표시.
+- [ ] 개발 전용 `FakeBusDataSource`와 fixture는 `src/debug`에만 두고 모의 모드를 화면에 명확히 표시한다.
 - [ ] API 키/환경설정 `.gitignore`, 제공기관별 어댑터 구현.
 - [ ] 정상/누락/오류/시간 역전의 파서 테스트.
+- [ ] 실제 Kotlin/XML/리소스 파일이 생성된 디렉터리에서는 해당 `.gitkeep`을 제거한다.
 
 **완료 게이트 G1:** 로컬 빌드 및 기본 단위 테스트 통과, 제공기관별 파싱 결과 공통 모델 통일.
 

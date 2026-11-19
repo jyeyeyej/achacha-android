@@ -104,11 +104,17 @@ async function requestText(label, baseUrl, params) {
   const timeout = setTimeout(() => controller.abort(), 15_000);
   const startedAt = Date.now();
   try {
-    const response = await fetch(url, {
-      headers: { Accept: "application/json, application/xml, text/xml;q=0.9" },
-      redirect: "follow",
-      signal: controller.signal,
-    });
+    let response;
+    try {
+      response = await fetch(url, {
+        headers: { Accept: "application/json, application/xml, text/xml;q=0.9" },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      const reason = error?.cause?.code ?? error?.name ?? "NETWORK_ERROR";
+      throw new Error(`${label}: 네트워크 연결 실패 (${reason})`);
+    }
     const text = await response.text();
     if (!response.ok) {
       throw new Error(`${label}: HTTP ${response.status}`);
@@ -173,7 +179,7 @@ async function testSeoul() {
   const stationQuery = fileEnv.SEOUL_TEST_STATION_QUERY?.trim() || "서울역버스환승센터";
   const stationResult = await requestText(
     "서울 정류장 검색",
-    "https://ws.bus.go.kr/api/rest/stationinfo/getStationByName",
+    "http://ws.bus.go.kr/api/rest/stationinfo/getStationByName",
     { serviceKey, stSrch: stationQuery },
   );
   assertSeoulSuccess("서울 정류장 검색", stationResult.text);
@@ -186,46 +192,71 @@ async function testSeoul() {
   if (stations.length === 0) throw new Error("서울 정류장 검색: 검색 결과가 없습니다.");
 
   let arrivalVerification;
-  let routeLookupCalls = 0;
+  let stationDetailCalls = 0;
   let arrivalCalls = 0;
 
   for (const station of stations.slice(0, 5)) {
-    const routeResult = await requestText(
-      "서울 정류장 경유노선 조회",
-      "https://ws.bus.go.kr/api/rest/stationinfo/getRouteByStation",
+    const stationDetailResult = await requestText(
+      "서울 정류장 상세 조회",
+      "http://ws.bus.go.kr/api/rest/stationinfo/getStationByUid",
       { serviceKey, arsId: station.arsId },
     );
-    routeLookupCalls += 1;
-    assertSeoulSuccess("서울 정류장 경유노선 조회", routeResult.text);
+    stationDetailCalls += 1;
+    assertSeoulSuccess("서울 정류장 상세 조회", stationDetailResult.text);
 
-    const routes = xmlItems(routeResult.text, "itemList").map((item) => ({
+    const routes = xmlItems(stationDetailResult.text, "itemList").map((item) => ({
       routeId: tagValue(item, "busRouteId"),
-      routeName: tagValue(item, "busRouteNm"),
-      order: tagValue(item, "seq") ?? tagValue(item, "staOrd"),
-    })).filter((route) => route.routeId && route.order);
+      routeName: tagValue(item, "rtNm") ?? tagValue(item, "busRouteAbrv"),
+      firstEtaSeconds: toNumber(tagValue(item, "traTime1")),
+      secondEtaSeconds: toNumber(tagValue(item, "traTime2")),
+    })).filter((route) => route.routeId);
 
-    for (const route of routes.slice(0, 12)) {
+    const uniqueRoutes = [...new Map(routes.map((route) => [route.routeId, route])).values()]
+      .sort((a, b) => Number(Boolean(b.secondEtaSeconds)) - Number(Boolean(a.secondEtaSeconds)));
+
+    for (const route of uniqueRoutes.slice(0, 12)) {
       const arrivalResult = await requestText(
         "서울 버스 도착정보",
-        "https://ws.bus.go.kr/api/rest/arrive/getArrInfoByRoute",
+        "http://ws.bus.go.kr/api/rest/arrive/getArrInfoByRouteAll",
         {
           serviceKey,
-          stId: station.stationId,
           busRouteId: route.routeId,
-          ord: route.order,
         },
       );
       arrivalCalls += 1;
       assertSeoulSuccess("서울 버스 도착정보", arrivalResult.text);
-      const item = xmlItems(arrivalResult.text, "itemList")[0];
-      if (!item) continue;
+      const arrivalItems = xmlItems(arrivalResult.text, "itemList");
+      if (arrivalItems.length === 0) continue;
+
+      const parsedItems = arrivalItems.map((item) => ({
+        raw: item,
+        stationId: tagValue(item, "stId"),
+        firstEtaSeconds: toNumber(tagValue(item, "traTime1")),
+        secondEtaSeconds: toNumber(tagValue(item, "traTime2")),
+        secondMessage: tagValue(item, "arrmsg2"),
+      }));
+      const itemInfo =
+        parsedItems.find((item) =>
+          item.stationId === station.stationId &&
+          (item.firstEtaSeconds ?? 0) > 0 &&
+          ((item.secondEtaSeconds ?? 0) > 0 || hasUsefulText(item.secondMessage)),
+        ) ??
+        parsedItems.find((item) =>
+          (item.firstEtaSeconds ?? 0) > 0 &&
+          ((item.secondEtaSeconds ?? 0) > 0 || hasUsefulText(item.secondMessage)),
+        ) ??
+        parsedItems.find((item) => item.stationId === station.stationId) ??
+        parsedItems[0];
+      const item = itemInfo.raw;
 
       const candidate = {
         status: arrivalResult.status,
         elapsedMs: arrivalResult.elapsedMs,
-        stationName: station.name,
-        arsId: station.arsId,
+        stationName: tagValue(item, "stNm") ?? station.name,
+        stationId: tagValue(item, "stId") ?? station.stationId,
+        arsId: tagValue(item, "arsId") ?? station.arsId,
         routeName: tagValue(item, "rtNm") ?? route.routeName,
+        routeId: route.routeId,
         firstMessage: tagValue(item, "arrmsg1"),
         secondMessage: tagValue(item, "arrmsg2"),
         firstEtaSeconds: toNumber(tagValue(item, "traTime1")),
@@ -259,7 +290,7 @@ async function testSeoul() {
     },
     arrival: {
       authenticated: true,
-      routeLookupCalls,
+      stationDetailCalls,
       arrivalCalls,
       ...arrivalVerification,
       firstProvided: (arrivalVerification.firstEtaSeconds ?? 0) > 0 || hasUsefulText(arrivalVerification.firstMessage),
@@ -357,18 +388,22 @@ function printResults(results) {
 
   const { seoul, gyeonggi } = results;
   console.log(`[PASS] 서울 정류장 검색: HTTP ${seoul.stationSearch.status}, ${seoul.stationSearch.resultCount}건, ${seoul.stationSearch.elapsedMs}ms`);
-  console.log(`       표본: ${seoul.stationSearch.sample.name} (ARS ${seoul.stationSearch.sample.arsId})`);
+  console.log(`       표본: ${seoul.stationSearch.sample.name} (정류장 ID ${seoul.stationSearch.sample.stationId}, ARS ${seoul.stationSearch.sample.arsId})`);
   console.log(`[PASS] 서울 버스 도착정보: HTTP ${seoul.arrival.status}, ${seoul.arrival.elapsedMs}ms`);
-  console.log(`       ${seoul.arrival.stationName} / ${seoul.arrival.routeName}`);
+  console.log(`       ${seoul.arrival.stationName} (정류장 ID ${seoul.arrival.stationId}) / ${seoul.arrival.routeName} (노선 ID ${seoul.arrival.routeId})`);
   console.log(`       이번 버스: ${etaText(seoul.arrival.firstEtaSeconds, seoul.arrival.firstMessage)}`);
+  console.log(`       첫 번째 차량 ID: ${seoul.arrival.firstVehicleId ?? "제공되지 않음"}`);
   console.log(`       다음 버스: ${etaText(seoul.arrival.secondEtaSeconds, seoul.arrival.secondMessage)}`);
+  console.log(`       두 번째 차량 ID: ${seoul.arrival.secondVehicleId ?? "제공되지 않음"}`);
   console.log("");
   console.log(`[PASS] 경기 정류장 검색: HTTP ${gyeonggi.stationSearch.status}, ${gyeonggi.stationSearch.resultCount}건, ${gyeonggi.stationSearch.elapsedMs}ms`);
-  console.log(`       표본: ${gyeonggi.stationSearch.sample.stationName} (${gyeonggi.stationSearch.sample.regionName ?? "지역정보 없음"})`);
+  console.log(`       표본: ${gyeonggi.stationSearch.sample.stationName} (정류장 ID ${gyeonggi.stationSearch.sample.stationId}, ${gyeonggi.stationSearch.sample.regionName ?? "지역정보 없음"})`);
   console.log(`[PASS] 경기 버스 도착정보: HTTP ${gyeonggi.arrival.status}, ${gyeonggi.arrival.elapsedMs}ms`);
-  console.log(`       ${gyeonggi.arrival.stationName} / ${gyeonggi.arrival.routeName}`);
+  console.log(`       ${gyeonggi.arrival.stationName} (정류장 ID ${gyeonggi.arrival.stationId}) / ${gyeonggi.arrival.routeName} (노선 ID ${gyeonggi.arrival.routeId})`);
   console.log(`       이번 버스: ${etaText(gyeonggi.arrival.firstEtaSeconds)}`);
+  console.log(`       첫 번째 차량 ID: ${gyeonggi.arrival.firstVehicleId ?? "제공되지 않음"}`);
   console.log(`       다음 버스: ${etaText(gyeonggi.arrival.secondEtaSeconds)}`);
+  console.log(`       두 번째 차량 ID: ${gyeonggi.arrival.secondVehicleId ?? "제공되지 않음"}`);
   console.log("");
   console.log("인증 검증: 4/4 API 성공");
   console.log(`두 대 도착정보: 서울=${seoul.arrival.firstProvided && seoul.arrival.secondProvided ? "확인" : "일부만 제공"}, 경기=${gyeonggi.arrival.firstProvided && gyeonggi.arrival.secondProvided ? "확인" : "일부만 제공"}`);

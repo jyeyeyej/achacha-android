@@ -67,9 +67,12 @@
 
 | 문서 | 내용 |
 |---|---|
+| [SERVICE-PLAN.md](./SERVICE-PLAN.md) | 서비스 배경, 사용자 시나리오 및 전체 기획 |
 | [SPEC.md](./SPEC.md) | 기능 및 상세 요구사항 |
 | [IMP-PLAN.md](./IMP-PLAN.md) | 구현 순서와 단계별 완료 기준 |
 | [API-INTEGRATION.md](./docs/API-INTEGRATION.md) | 서울·경기 버스 API 연동 설계 |
+| [API-VALIDATION.md](./docs/API-VALIDATION.md) | 네 API의 실제 인증·응답 검증 결과 |
+| [DIRECTORY-STRUCTURE.md](./docs/DIRECTORY-STRUCTURE.md) | Android 소스 디렉터리 책임과 보안 경계 |
 | [TEST-PLAN.md](./docs/TEST-PLAN.md) | 기능 테스트 및 Z Flip4 실기기 검증 계획 |
 
 ## 개발 순서

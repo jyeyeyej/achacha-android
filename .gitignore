@@ -12,6 +12,17 @@ reports/api-validation-*.json
 .gradle/
 build/
 **/build/
+out/
+.cxx/
+.externalNativeBuild/
+captures/
+*.apk
+*.aab
 .idea/
 *.iml
+
+# Android signing secrets
+*.jks
+*.keystore
+keystore.properties
 
